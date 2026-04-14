@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Contract IQ — Vectorless RAG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #1a1814;
+    --ink-secondary: #4a4640;
+    --ink-tertiary: #8a8680;
+    --cream: #f7f4ef;
+    --cream-dark: #ede9e2;
+    --cream-darker: #ddd8cf;
+    --accent: #c4501a;
+    --accent-light: #f0e4dc;
+    --border: rgba(26,24,20,0.12);
+    --border-strong: rgba(26,24,20,0.22);
+    --success: #2d6a4f;
+    --success-bg: #e8f5ef;
+  }
+
+  html { font-size: 15px; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    background: var(--cream);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.25rem;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-dot {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+  .header-tag {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    border: 1px solid var(--border);
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  /* ── Layout ── */
+  .shell {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: calc(100vh - 56px);
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--cream);
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 1.2rem 1.2rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-title {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    margin-bottom: 10px;
+  }
+  .upload-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: transparent;
+    color: var(--ink-secondary);
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    width: 100%;
+  }
+  .upload-zone:hover { background: var(--cream-dark); border-color: var(--accent); }
+  .upload-zone.dragover { background: var(--accent-light); border-color: var(--accent); }
+  .upload-icon { font-size: 20px; margin-bottom: 4px; display: block; }
+
+  .doc-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .doc-item {
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .15s;
+    margin-bottom: 3px;
+  }
+  .doc-item:hover { background: var(--cream-dark); }
+  .doc-item.active { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+  .doc-item.active .doc-status { color: var(--cream-darker); }
+  .doc-item.active .doc-name { color: var(--cream); }
+  .doc-name {
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+  }
+  .doc-status {
+    font-size: 11px;
+    color: var(--ink-tertiary);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-dot.processing { background: #e8a030; animation: pulse 1s ease-in-out infinite; }
+  .status-dot.completed { background: var(--success); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .compare-btn {
+    margin: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink-secondary);
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    width: calc(100% - 16px);
+    text-align: left;
+    transition: all .15s;
+  }
+  .compare-btn:hover { background: var(--cream-dark); }
+
+  /* ── Main ── */
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Welcome ── */
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 2rem;
+    text-align: center;
+  }
+  .welcome-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2.2rem;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .welcome-title em { color: var(--accent); font-style: italic; }
+  .welcome-sub { color: var(--ink-secondary); font-size: 14px; max-width: 380px; line-height: 1.6; }
+  .sample-questions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+  .sample-q {
+    padding: 6px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    transition: all .15s;
+  }
+  .sample-q:hover { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+
+  /* ── Chat ── */
+  .chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem 2rem;
+    display: none;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .chat-area.visible { display: flex; }
+
+  .doc-header {
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .doc-header.visible { display: flex; }
+  .doc-header-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+  }
+  .doc-meta { font-size: 12px; color: var(--ink-tertiary); }
+  .tree-btn {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    font-size: 12px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all .15s;
+  }
+  .tree-btn:hover { background: var(--cream-dark); }
+
+  /* Message bubbles */
+  .msg { display: flex; flex-direction: column; gap: 4px; max-width: 720px; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.assistant { align-self: flex-start; align-items: flex-start; }
+  .msg-label { font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-tertiary); padding: 0 4px; }
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.65;
+    max-width: 100%;
+  }
+  .msg.user .msg-bubble {
+    background: var(--ink);
+    color: var(--cream);
+    border-bottom-right-radius: 3px;
+  }
+  .msg.assistant .msg-bubble {
+    background: white;
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 3px;
+    color: var(--ink);
+  }
+  .msg-bubble p { margin-bottom: 8px; }
+  .msg-bubble p:last-child { margin-bottom: 0; }
+  .msg-bubble strong { font-weight: 500; }
+  .msg-bubble code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: var(--cream-dark);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* Typing indicator */
+  .typing-dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 12px 16px;
+  }
+  .typing-dots span {
+    width: 6px; height: 6px;
+    background: var(--ink-tertiary);
+    border-radius: 50%;
+    animation: bounce .9s ease-in-out infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: .15s; }
+  .typing-dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+
+  /* ── Input area ── */
+  .input-area {
+    border-top: 1px solid var(--border);
+    padding: 1rem 2rem;
+    display: none;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--cream);
+  }
+  .input-area.visible { display: flex; }
+  .input-wrap { flex: 1; position: relative; }
+  textarea {
+    width: 100%;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    background: white;
+    color: var(--ink);
+    resize: none;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color .15s;
+    min-height: 42px;
+    max-height: 140px;
+  }
+  textarea:focus { border-color: var(--ink); }
+  textarea::placeholder { color: var(--ink-tertiary); }
+  .send-btn {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    border: none;
+    background: var(--ink);
+    color: var(--cream);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all .15s;
+    font-size: 16px;
+  }
+  .send-btn:hover { background: var(--accent); }
+  .send-btn:disabled { background: var(--cream-darker); cursor: not-allowed; }
+
+  /* ── Tree panel ── */
+  .tree-panel {
+    position: fixed;
+    right: 0; top: 56px;
+    width: 340px;
+    height: calc(100vh - 56px);
+    background: white;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 1.2rem;
+    transform: translateX(100%);
+    transition: transform .25s ease;
+    z-index: 50;
+  }
+  .tree-panel.open { transform: translateX(0); }
+  .tree-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tree-panel-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1rem;
+  }
+  .close-tree {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--ink-tertiary);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .tree-node { margin-bottom: 4px; }
+  .tree-node-title {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink);
+    padding: 5px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .tree-node-title:hover { background: var(--cream-dark); }
+  .tree-node-page {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    margin-left: auto;
+  }
+  .tree-node-children { margin-left: 16px; border-left: 1px solid var(--border); padding-left: 8px; margin-top: 2px; }
+  .tree-node-summary { font-size: 11px; color: var(--ink-tertiary); padding: 2px 8px 6px; line-height: 1.4; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: var(--cream);
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all .3s;
+    z-index: 200;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── Processing banner ── */
+  .processing-banner {
+    padding: 10px 2rem;
+    background: #fef9ec;
+    border-bottom: 1px solid #f0e0a0;
+    font-size: 13px;
+    color: #7a5c00;
+    display: none;
+  }
+  .processing-banner.visible { display: block; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--cream-darker); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    Contract IQ
+  </div>
+  <span class="header-tag">Vectorless RAG · PageIndex</span>
+</header>
+
+<div class="shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Contracts</div>
+      <label class="upload-zone" id="uploadZone">
+        <span class="upload-icon">⊕</span>
+        Upload PDF contract
+        <input type="file" id="fileInput" accept=".pdf" style="display:none" multiple/>
+      </label>
+    </div>
+    <div class="doc-list" id="docList">
+      <div style="padding:16px 8px;font-size:12px;color:var(--ink-tertiary);text-align:center;line-height:1.5;">
+        Upload a contract to get started.<br/>No embeddings. No vector DB.
+      </div>
+    </div>
+    <button class="compare-btn" id="compareBtn" onclick="startCompare()" style="display:none">
+      ⊞ Compare selected contracts
+    </button>
+  </aside>
+
+  <!-- Main area -->
+  <main class="main">
+    <div class="doc-header" id="docHeader">
+      <div>
+        <div class="doc-header-name" id="docHeaderName">—</div>
+        <div class="doc-meta" id="docMeta">PageIndex vectorless RAG</div>
+      </div>
+      <button class="tree-btn" onclick="toggleTree()">View document tree</button>
+    </div>
+
+    <div class="processing-banner" id="processingBanner">
+      PageIndex is building the hierarchical document tree — no embedding model running. Usually takes 30–60s for a typical contract.
+    </div>
+
+    <!-- Welcome screen -->
+    <div class="welcome" id="welcomeScreen">
+      <div class="welcome-title">Ask anything about<br/>your <em>contracts.</em></div>
+      <p class="welcome-sub">Upload a PDF contract. PageIndex builds a reasoning tree — no chunks, no vectors. Ask questions like a lawyer would.</p>
+      <div class="sample-questions">
+        <button class="sample-q" onclick="useSample(this)">What is the indemnification clause?</button>
+        <button class="sample-q" onclick="useSample(this)">Does this contract auto-renew?</button>
+        <button class="sample-q" onclick="useSample(this)">What are the payment terms?</button>
+        <button class="sample-q" onclick="useSample(this)">Summarise all termination rights</button>
+        <button class="sample-q" onclick="useSample(this)">What is the liability cap?</button>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-area" id="chatArea"></div>
+
+    <!-- Input -->
+    <div class="input-area" id="inputArea">
+      <div class="input-wrap">
+        <textarea
+          id="questionInput"
+          rows="1"
+          placeholder="Ask a question about this contract..."
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" onclick="sendQuestion()">→</button>
+    </div>
+  </main>
+</div>
+
+<!-- Tree panel -->
+<div class="tree-panel" id="treePanel">
+  <div class="tree-panel-header">
+    <span class="tree-panel-title">Document tree</span>
+    <button class="close-tree" onclick="toggleTree()">×</button>
+  </div>
+  <div id="treePanelContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'http://localhost:8000';
+
+let state = {
+  docs: {},           // doc_id → { doc_id, filename, status, tree }
+  activeDocId: null,
+  history: [],        // conversation history for multi-turn
+  polling: {},        // doc_id → interval id
+};
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', e => {
+  [...e.target.files].forEach(uploadFile);
+  e.target.value = '';
+});
+
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('dragover');
+  [...e.dataTransfer.files].filter(f => f.name.endsWith('.pdf')).forEach(uploadFile);
+});
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  showToast(`Uploading ${file.name}…`);
+  try {
+    const res = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    state.docs[data.doc_id] = { ...data, tree: null };
+    renderDocList();
+    pollStatus(data.doc_id);
+    showToast('Upload complete — building document tree');
+  } catch {
+    showToast('Upload failed — is the backend running?');
+  }
+}
+
+function pollStatus(doc_id) {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API}/document/${doc_id}/status`);
+      const data = await res.json();
+      state.docs[doc_id].status = data.status;
+      if (data.status === 'completed') {
+        clearInterval(interval);
+        delete state.polling[doc_id];
+        // Fetch full tree
+        const treeRes = await fetch(`${API}/document/${doc_id}/tree`);
+        const treeData = await treeRes.json();
+        state.docs[doc_id].tree = treeData.tree;
+        renderDocList();
+        if (state.activeDocId === doc_id) {
+          updateDocHeader(doc_id);
+          document.getElementById('processingBanner').classList.remove('visible');
+        }
+        showToast(`${state.docs[doc_id].filename} ready`);
+      } else {
+        renderDocList();
+      }
+    } catch { clearInterval(interval); }
+  }, 3000);
+  state.polling[doc_id] = interval;
+}
+
+// ── Doc list ───────────────────────────────────────────────────────────────
+function renderDocList() {
+  const list = document.getElementById('docList');
+  const docs = Object.values(state.docs);
+  if (docs.length === 0) {
+    list.innerHTML = '<div style="padding:16px 8px;font-size:12px;color:var(--ink-tertiary);text-align:center;line-height:1.5;">Upload a contract to get started.<br/>No embeddings. No vector DB.</div>';
+    return;
+  }
+  list.innerHTML = docs.map(doc => `
+    <div class="doc-item ${doc.doc_id === state.activeDocId ? 'active' : ''}"
+         onclick="selectDoc('${doc.doc_id}')">
+      <div class="doc-name">${doc.filename}</div>
+      <div class="doc-status">
+        <div class="status-dot ${doc.status}"></div>
+        ${doc.status === 'processing' ? 'Building tree…' : `${countNodes(doc.tree)} nodes indexed`}
+      </div>
+    </div>
+  `).join('');
+
+  const completedDocs = docs.filter(d => d.status === 'completed');
+  document.getElementById('compareBtn').style.display = completedDocs.length >= 2 ? 'block' : 'none';
+}
+
+function countNodes(tree, count = 0) {
+  if (!tree) return 0;
+  return tree.reduce((acc, node) => acc + 1 + countNodes(node.nodes || [], 0), 0);
+}
+
+function selectDoc(doc_id) {
+  state.activeDocId = doc_id;
+  state.history = [];
+  document.getElementById('chatArea').innerHTML = '';
+  document.getElementById('chatArea').classList.add('visible');
+  document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('inputArea').classList.add('visible');
+  document.getElementById('docHeader').classList.add('visible');
+  updateDocHeader(doc_id);
+  renderDocList();
+}
+
+function updateDocHeader(doc_id) {
+  const doc = state.docs[doc_id];
+  document.getElementById('docHeaderName').textContent = doc.filename;
+  document.getElementById('docMeta').textContent =
+    doc.status === 'completed'
+      ? `${countNodes(doc.tree)} nodes · vectorless · reasoning-based`
+      : 'Building document tree…';
+  const banner = document.getElementById('processingBanner');
+  doc.status === 'processing'
+    ? banner.classList.add('visible')
+    : banner.classList.remove('visible');
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+function useSample(btn) {
+  const input = document.getElementById('questionInput');
+  input.value = btn.textContent;
+  autoResize(input);
+  if (state.activeDocId) sendQuestion();
+}
+
+async function sendQuestion() {
+  const input = document.getElementById('questionInput');
+  const question = input.value.trim();
+  if (!question || !state.activeDocId) return;
+
+  const doc = state.docs[state.activeDocId];
+  if (doc.status !== 'completed') {
+    showToast('Document still building — please wait');
+    return;
+  }
+
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('sendBtn').disabled = true;
+
+  appendMessage('user', question);
+
+  // Typing indicator
+  const typingId = 'typing-' + Date.now();
+  appendTyping(typingId);
+
+  state.history.push({ role: 'user', content: question });
+
+  try {
+    const res = await fetch(`${API}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc_id: state.activeDocId,
+        question,
+        conversation_history: state.history.slice(0, -1),
+      }),
+    });
+    const data = await res.json();
+    removeTyping(typingId);
+    appendMessage('assistant', data.answer);
+    state.history.push({ role: 'assistant', content: data.answer });
+  } catch {
+    removeTyping(typingId);
+    appendMessage('assistant', 'Could not connect to backend. Make sure the FastAPI server is running on port 8000.');
+  }
+
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('questionInput').focus();
+}
+
+function appendMessage(role, text) {
+  const area = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const formatted = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br/>');
+  div.innerHTML = `
+    <div class="msg-label">${role === 'user' ? 'You' : 'Contract IQ'}</div>
+    <div class="msg-bubble"><p>${formatted}</p></div>
+  `;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function appendTyping(id) {
+  const area = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.id = id;
+  div.innerHTML = `
+    <div class="msg-label">Contract IQ</div>
+    <div class="msg-bubble">
+      <div class="typing-dots"><span></span><span></span><span></span></div>
+    </div>
+  `;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function removeTyping(id) {
+  document.getElementById(id)?.remove();
+}
+
+// ── Compare ────────────────────────────────────────────────────────────────
+function startCompare() {
+  const q = prompt('Enter your comparison question:\n(e.g. "Which contract has a longer notice period for termination?")');
+  if (!q) return;
+  const docIds = Object.values(state.docs)
+    .filter(d => d.status === 'completed')
+    .map(d => d.doc_id);
+  compareContracts(docIds, q);
+}
+
+async function compareContracts(docIds, question) {
+  state.activeDocId = docIds[0];
+  const names = docIds.map(id => state.docs[id]?.filename || id).join(' vs ');
+  document.getElementById('docHeaderName').textContent = `Comparing: ${names}`;
+  document.getElementById('docMeta').textContent = 'Multi-document reasoning';
+  document.getElementById('docHeader').classList.add('visible');
+  document.getElementById('chatArea').classList.add('visible');
+  document.getElementById('inputArea').classList.add('visible');
+  document.getElementById('welcomeScreen').style.display = 'none';
+
+  appendMessage('user', question);
+  const typingId = 'typing-' + Date.now();
+  appendTyping(typingId);
+
+  try {
+    const res = await fetch(`${API}/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_ids: docIds, question }),
+    });
+    const data = await res.json();
+    removeTyping(typingId);
+    appendMessage('assistant', data.answer);
+  } catch {
+    removeTyping(typingId);
+    appendMessage('assistant', 'Comparison failed — check backend connection.');
+  }
+}
+
+// ── Tree viewer ────────────────────────────────────────────────────────────
+function toggleTree() {
+  const panel = document.getElementById('treePanel');
+  const isOpen = panel.classList.contains('open');
+  if (!isOpen && state.activeDocId) renderTree(state.docs[state.activeDocId]?.tree);
+  panel.classList.toggle('open', !isOpen);
+}
+
+function renderTree(nodes, container = null) {
+  const target = container || document.getElementById('treePanelContent');
+  if (!nodes || nodes.length === 0) {
+    target.innerHTML = '<p style="font-size:12px;color:var(--ink-tertiary)">Tree not yet available.</p>';
+    return;
+  }
+  target.innerHTML = nodes.map(node => `
+    <div class="tree-node">
+      <div class="tree-node-title">
+        <span style="color:var(--ink-tertiary);font-size:10px">§</span>
+        ${node.title || 'Untitled'}
+        <span class="tree-node-page">p.${node.page_index ?? '—'}</span>
+      </div>
+      ${node.text ? `<div class="tree-node-summary">${node.text.slice(0,120)}…</div>` : ''}
+      ${node.nodes?.length ? `<div class="tree-node-children" id="children-${node.node_id}"></div>` : ''}
+    </div>
+  `).join('');
+
+  nodes.forEach(node => {
+    if (node.nodes?.length) {
+      renderTree(node.nodes, target.querySelector(`#children-${node.node_id}`));
+    }
+  });
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
+

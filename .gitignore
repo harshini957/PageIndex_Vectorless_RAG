@@ -1,0 +1,13 @@
+# Environment variables — never commit real keys
+.env
+ 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+ 
+# Temp files
+*.tmp
+ 
